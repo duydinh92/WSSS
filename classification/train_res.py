@@ -35,7 +35,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_list', default='/content/drive/MyDrive/WSSS/Project/voc12/train_aug.txt', type=str)
     parser.add_argument('--val_list', default='/content/drive/MyDrive/WSSS/Project/voc12/train.txt', type=str)
     parser.add_argument('--batch_size', default=16, type=int)
-    parser.add_argument('--max_epoch', default=3, type=int)
+    parser.add_argument('--max_epoch', default=10, type=int)
     parser.add_argument('--lr', default=0.1, type=float)
     parser.add_argument('--wd', default=1e-4, type=float)
     parser.add_argument('--input_size', default=512, type=int)
@@ -47,11 +47,9 @@ if __name__ == '__main__':
     # General settings
     log_dir = create_directory(f'./experiments/logs/')
     model_dir = create_directory('./experiments/models/')
-    data_dir = create_directory(f'./experiments/data/')
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/')
     log_path = log_dir + f'{args.tag}.txt'
     model_path = model_dir + f'{args.tag}.pth'
-    data_path = data_dir + f'{args.tag}.json'
     meta_dic = read_json('/content/drive/MyDrive/WSSS/Project/voc12/VOC_2012.json')
     class_names = np.asarray(meta_dic['class_names'])
     set_seed(args.seed)
@@ -156,10 +154,6 @@ if __name__ == '__main__':
         return best_th, best_mIoU
 
     # Train
-    data_dic = {
-        'train' : [],
-        'validation' : []
-    }
     train_meter = Average_Meter(['loss'])
     
     best_train_mIoU = -1
@@ -197,8 +191,6 @@ if __name__ == '__main__':
                 'loss' : loss
 
             }
-            data_dic['train'].append(data)
-            write_json(data_path, data_dic)
 
             log_func('[i] iteration={iteration:,}, learning_rate={learning_rate:.4f}, loss={loss:.4f}'.format(**data)
             )
@@ -222,16 +214,13 @@ if __name__ == '__main__':
                 'train_mIoU' : mIoU,
                 'best_train_mIoU' : best_train_mIoU
             }
-            data_dic['validation'].append(data)
-            write_json(data_path, data_dic)
-            
+
             log_func('[i] iteration={iteration:,}, threshold={threshold:.2f}, train_mIoU={train_mIoU:.2f}%, best_train_mIoU={best_train_mIoU:.2f}%'.format(**data))
             
             writer.add_scalar('Evaluation/threshold', threshold, iteration)
             writer.add_scalar('Evaluation/train_mIoU', mIoU, iteration)
             writer.add_scalar('Evaluation/best_train_mIoU', best_train_mIoU, iteration)
       
-    write_json(data_path, data_dic)
     writer.close()
 
     print("Training done")

@@ -1,0 +1,15 @@
+torch
+torchvision
+numpy
+pillow
+scikit-learn
+tqdm
+matplotlib
+visdom
+kornia
+git+https://github.com/lucasb-eyer/pydensecrf.git
+mxnet
+streamlit
+scikit-image
+tensorboard
+opencv-python

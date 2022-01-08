@@ -17,41 +17,12 @@ import matplotlib.pyplot as plt
 
 sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
 from dataset import data
+from network.resnet import ResNetUp
 import network
-from network import resnet38_SEAM
 from utils import evaluate_utils, general_utils,  train_utils
-from evaluate_utils import *
-from general_utils import *
-from train_utils import *
-
-
-def max_norm(p, e=1e-5):
-    N, C, H, W = p.size()
-    p = F.relu(p)
-    max_v = torch.max(p.view(N,C,-1),dim=-1)[0].view(N,C,1,1)
-    min_v = torch.min(p.view(N,C,-1),dim=-1)[0].view(N,C,1,1)
-    p = F.relu(p-min_v-e)/(max_v-min_v+e)
-
-    return p
-
-
-def adaptive_min_pooling_loss(x):
-    n,c,h,w = x.size()
-    k = h*w//4
-    x = torch.max(x, dim=1)[0]
-    y = torch.topk(x.view(n,-1), k=k, dim=-1, largest=False)[0]
-    y = F.relu(y, inplace=False)
-    loss = torch.sum(y)/(k*n)
-    
-    return loss
-
-
-def max_onehot(x):
-    n,c,h,w = x.size()
-    x_max = torch.max(x[:,1:,:,:], dim=1, keepdim=True)[0]
-    x[:,1:,:,:][x[:,1:,:,:] != x_max] = 0
-    
-    return x
+from utils.evaluate_utils import *
+from utils.general_utils import *
+from utils.train_utils import *
 
 
 if __name__ == '__main__':
@@ -63,24 +34,22 @@ if __name__ == '__main__':
     parser.add_argument('--voc12_root', default='/content/VOC2012_train_val/VOC2012_train_val', type=str)
     parser.add_argument('--train_list', default='/content/drive/MyDrive/WSSS/Project/voc12/train_aug.txt', type=str)
     parser.add_argument('--val_list', default='/content/drive/MyDrive/WSSS/Project/voc12/train.txt', type=str)
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--max_epoch', default=3, type=int)
     parser.add_argument('--lr', default=0.1, type=float)
     parser.add_argument('--wd', default=1e-4, type=float)
     parser.add_argument('--input_size', default=512, type=int)
     parser.add_argument('--crop_size', default=384, type=int)
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='train_res38+seam_input512', type=str)
+    parser.add_argument('--tag', default='train_resnet18+up_crop384', type=str)
     args = parser.parse_args()
     
     # General settings
     log_dir = create_directory(f'./experiments/logs/')
     model_dir = create_directory('./experiments/models/')
-    data_dir = create_directory(f'./experiments/data/')
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/')
     log_path = log_dir + f'{args.tag}.txt'
     model_path = model_dir + f'{args.tag}.pth'
-    data_path = data_dir + f'{args.tag}.json'
     meta_dic = read_json('/content/drive/MyDrive/WSSS/Project/voc12/VOC_2012.json')
     class_names = np.asarray(meta_dic['class_names'])
     set_seed(args.seed)
@@ -93,6 +62,7 @@ if __name__ == '__main__':
     train_loader = data.train_data_loader_for_classification(args)
     val_loader = data.val_data_loader_for_classification(args)
     val_iteration = len(train_loader)
+    # log_iteration = int(val_iteration * args.print_ratio)
     log_iteration = 100
     max_iteration = args.max_epoch * val_iteration
 
@@ -103,10 +73,9 @@ if __name__ == '__main__':
     # Network
     load_model_fn = lambda: load_model(model, model_path)
     save_model_fn = lambda: save_model(model, model_path)
-    
-    model = network.resnet38_SEAM.Net()
-    #model.load_state_dict(torch.load('network/resnet38_SEAM.pth'))
-    param_groups = model.get_parameter_groups()
+
+    model = ResNetUp(args.num_classes, pretrained=True)
+    param_groups = model.get_parameter_groups(print_fn=None)
     model = model.cuda()
     model.train()
 
@@ -117,7 +86,7 @@ if __name__ == '__main__':
     log_func('[i] gpu : {}'.format(str(torch.cuda.get_device_name(0))))
     
     # Loss, Optimizer
-    class_loss_fn = nn.MultiLabelSoftMarginLoss().cuda()
+    class_loss_fn = nn.MultiLabelSoftMarginLoss(reduction='none').cuda()
     log_func('[i] The number of pretrained weights : {}'.format(len(param_groups[0])))
     log_func('[i] The number of pretrained bias : {}'.format(len(param_groups[1])))
     log_func('[i] The number of scratched weights : {}'.format(len(param_groups[2])))
@@ -141,8 +110,7 @@ if __name__ == '__main__':
             for step, (images, labels, gt_masks) in enumerate(loader):
                 images = images.cuda()
 
-                _, cam_rv = model(images)
-                cams = cam_rv[:,1:,:,:]
+                _, cams, _ = model(images)
 
                 for batch_index in range(images.size()[0]):
                     gt_mask = (get_numpy_from_tensor(gt_masks[batch_index].squeeze(0))*255).astype(np.uint8)
@@ -165,7 +133,7 @@ if __name__ == '__main__':
                     
                     del gt_mask, cam, cam_max, cam_min
 
-                del images, cams, cam_rv
+                del images, cams
                 if torch.cuda.is_available(): torch.cuda.empty_cache()
                    
                 sys.stdout.write('\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
@@ -186,99 +154,52 @@ if __name__ == '__main__':
         return best_th, best_mIoU
 
     # Train
-    data_dic = {
-        'train' : [],
-        'validation' : []
-    }
-    train_meter = Average_Meter(['loss', 'loss_cls', 'loss_er', 'loss_ecr'])
+    train_meter = Average_Meter(['loss'])
     
     best_train_mIoU = -1
     thresholds = list(np.arange(0.10, 0.50, 0.05))
     
     writer = SummaryWriter(tensorboard_dir)
-    train_iterator = data.Iterator(train_loader)
-
-    scale_factor = 0.3                                                          
+    train_iterator = data.Iterator(train_loader)                                                          
 
     for iteration in range(max_iteration):
-        img1, label = train_iterator.get()
-        N,C,H,W = img1.size()
-        img2 = F.interpolate(img1,scale_factor=scale_factor,mode='bilinear',align_corners=True)
-        img1, img2 = img1.cuda(), img2.cuda()
+        images, labels = train_iterator.get()
+        images, labels = images.cuda(), labels.cuda()
 
-        bg_score = torch.ones((N,1))
-        label = torch.cat((bg_score, label), dim=1)
-        label = label.cuda(non_blocking=True).unsqueeze(2).unsqueeze(3)
-
-        cam1, cam_rv1 = model(img1)
-        label1 = F.adaptive_avg_pool2d(cam1, (1,1))
-        loss_rvmin1 = adaptive_min_pooling_loss((cam_rv1*label)[:,1:,:,:])
-        cam1 = F.interpolate(max_norm(cam1),scale_factor=scale_factor,mode='bilinear',align_corners=True)*label
-        cam_rv1 = F.interpolate(max_norm(cam_rv1),scale_factor=scale_factor,mode='bilinear',align_corners=True)*label
-        
-        cam2, cam_rv2 = model(img2)
-        label2 = F.adaptive_avg_pool2d(cam2, (1,1))
-        loss_rvmin2 = adaptive_min_pooling_loss((cam_rv2*label)[:,1:,:,:])
-        cam2 = max_norm(cam2)*label
-        cam_rv2 = max_norm(cam_rv2)*label
-        
-        loss_cls1 = class_loss_fn(label1[:,1:,:,:], label[:,1:,:,:])
-        loss_cls2 = class_loss_fn(label2[:,1:,:,:], label[:,1:,:,:])
-        loss_cls = (loss_cls1 + loss_cls2)/2 + (loss_rvmin1 + loss_rvmin2)/2
-
-        loss_er = torch.mean(torch.abs(cam1[:,1:,:,:]-cam2[:,1:,:,:]))
-        
-        ns,cs,hs,ws = cam2.size()
-        cam1[:,0,:,:] = 1-torch.max(cam1[:,1:,:,:],dim=1)[0]
-        cam2[:,0,:,:] = 1-torch.max(cam2[:,1:,:,:],dim=1)[0]
-        tensor_ecr1 = torch.abs(max_onehot(cam2.detach()) - cam_rv1)
-        tensor_ecr2 = torch.abs(max_onehot(cam1.detach()) - cam_rv2)
-
-        loss_ecr1 = torch.mean(torch.topk(tensor_ecr1.view(ns,-1), k=(int)(21*hs*ws*0.2), dim=-1)[0])
-        loss_ecr2 = torch.mean(torch.topk(tensor_ecr2.view(ns,-1), k=(int)(21*hs*ws*0.2), dim=-1)[0])        
-        loss_ecr = loss_ecr1 + loss_ecr2
-
-        loss = loss_cls + loss_er + loss_ecr
+        _, _, scores = model(images)
+        loss = class_loss_fn(scores, labels).mean()
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         train_meter.add({
-            'loss': loss.item(), 'loss_cls': loss_cls.item(), 'loss_er': loss_er.item(), 'loss_ecr': loss_ecr.item()
+            'loss' : loss.item()
         })
-        
-        del img1, img2, label, bg_score, cam_rv1, cam_rv2, loss_rvmin1, loss_rvmin2
-        del loss_cls1, loss_cls2, loss_cls, loss_er, tensor_ecr1, tensor_ecr2, loss_ecr1, loss_ecr2, loss_ecr, loss
+
+        del images, labels, scores, loss
         if torch.cuda.is_available(): torch.cuda.empty_cache()
         
         # For Log
-        if (iteration + 1) % 10 == 0:
-            loss, loss_cls, loss_er, loss_ecr = train_meter.get(clear=True)
+        if (iteration + 1) % log_iteration == 0:
+            loss = train_meter.get(clear=True)
             learning_rate = float(get_learning_rate_from_optimizer(optimizer))
             
             data = {
                 'iteration' : iteration + 1,
                 'learning_rate' : learning_rate,
-                'loss' : loss,
-                'loss_cls' : loss_cls,
-                'loss_er' : loss_er, 
-                'loss_ecr' : loss_ecr
-            }
-            data_dic['train'].append(data)
-            write_json(data_path, data_dic)
+                'loss' : loss
 
-            log_func('[i] iteration={iteration:,}, learning_rate={learning_rate:.4f}, loss={loss:.4f}, loss_cls={loss_cls:.4f}, loss_er={loss_er:.4f}, loss_ecr={loss_ecr:.4f}'.format(**data)
+            }
+
+            log_func('[i] iteration={iteration:,}, learning_rate={learning_rate:.4f}, loss={loss:.4f}'.format(**data)
             )
 
             writer.add_scalar('Train/loss', loss, iteration)
-            writer.add_scalar('Train/loss_cls', loss_cls, iteration)
-            writer.add_scalar('Train/loss_er', loss_er, iteration)
-            writer.add_scalar('Train/loss_ecr', loss_ecr, iteration)
             writer.add_scalar('Train/learning_rate', learning_rate, iteration)
         
         # For evaluation
-        if (iteration + 1) % 50 == 0: 
+        if (iteration + 1) % val_iteration == 0: 
             threshold, mIoU = evaluate(val_loader)
             
             if best_train_mIoU == -1 or best_train_mIoU < mIoU:
@@ -293,8 +214,6 @@ if __name__ == '__main__':
                 'train_mIoU' : mIoU,
                 'best_train_mIoU' : best_train_mIoU
             }
-            data_dic['validation'].append(data)
-            write_json(data_path, data_dic)
             
             log_func('[i] iteration={iteration:,}, threshold={threshold:.2f}, train_mIoU={train_mIoU:.2f}%, best_train_mIoU={best_train_mIoU:.2f}%'.format(**data))
             
@@ -302,7 +221,6 @@ if __name__ == '__main__':
             writer.add_scalar('Evaluation/train_mIoU', mIoU, iteration)
             writer.add_scalar('Evaluation/best_train_mIoU', best_train_mIoU, iteration)
       
-    write_json(data_path, data_dic)
     writer.close()
 
     print("Training done")

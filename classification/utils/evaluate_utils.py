@@ -1,7 +1,7 @@
 import numpy as np
 import json
 import sys
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project/classification/utils")
+sys.path.append(r"classification/utils")
 from general_utils import read_json
 
 

@@ -1,1 +1,3 @@
 /JPEGImages/2007_000032.jpg /SegmentationClassAug/2007_000032.png
+/JPEGImages/2007_000039.jpg /SegmentationClassAug/2007_000039.png
+/JPEGImages/2007_000063.jpg /SegmentationClassAug/2007_000063.png

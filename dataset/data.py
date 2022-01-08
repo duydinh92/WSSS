@@ -6,7 +6,7 @@ from PIL import Image
 import os.path
 import scipy.misc
 from torchvision import transforms
-
+import sys
 
 IMG_FOLDER_NAME = "JPEGImages"
 ANNOT_FOLDER_NAME = "Annotations"
@@ -170,6 +170,119 @@ class VOC_Dataset_For_CAM_Inference(VOC_Dataset):
         return name, image, label
 
 
+class ExtractAffinityLabelInRadius():
+
+    def __init__(self, cropsize, radius=5):
+        self.radius = radius
+
+        self.search_dist = []
+
+        for x in range(1, radius):
+            self.search_dist.append((0, x))
+
+        for y in range(1, radius):
+            for x in range(-radius+1, radius):
+                if x*x + y*y < radius*radius:
+                    self.search_dist.append((y, x))
+
+        self.radius_floor = radius-1
+
+        self.crop_height = cropsize - self.radius_floor
+        self.crop_width = cropsize - 2 * self.radius_floor
+        return
+
+    def __call__(self, label):
+        labels_from = label[:-self.radius_floor, self.radius_floor:-self.radius_floor]
+        labels_from = np.reshape(labels_from, [-1])
+        #print(labels_from.shape)
+
+        labels_to_list = []
+        valid_pair_list = []
+
+        for dy, dx in self.search_dist:
+            labels_to = label[dy:dy+self.crop_height, self.radius_floor+dx:self.radius_floor+dx+self.crop_width]
+            labels_to = np.reshape(labels_to, [-1])
+
+            valid_pair = np.logical_and(np.less(labels_to, 255), np.less(labels_from, 255))
+
+            labels_to_list.append(labels_to)
+            valid_pair_list.append(valid_pair)
+
+        bc_labels_from = np.expand_dims(labels_from, 0)
+        concat_labels_to = np.stack(labels_to_list)
+        concat_valid_pair = np.stack(valid_pair_list)
+
+        pos_affinity_label = np.equal(bc_labels_from, concat_labels_to)
+        
+        
+        bg_pos_affinity_label = np.logical_and(pos_affinity_label, np.equal(bc_labels_from, 0)).astype(np.float32)
+        #print(bg_pos_affinity_label.shape)
+        fg_pos_affinity_label = np.logical_and(np.logical_and(pos_affinity_label, np.not_equal(bc_labels_from, 0)), concat_valid_pair).astype(np.float32)
+
+        neg_affinity_label = np.logical_and(np.logical_not(pos_affinity_label), concat_valid_pair).astype(np.float32)
+
+        return torch.from_numpy(bg_pos_affinity_label), torch.from_numpy(fg_pos_affinity_label), torch.from_numpy(neg_affinity_label)
+
+
+class VOC_Dataset_For_Aff(VOC_Dataset):
+
+    def __init__(self, img_name_list_path, label_la_dir, label_ha_dir, cropsize, voc12_root, radius=5,
+                 joint_transform_list=None, img_transform_list=None, label_transform_list=None):
+        super().__init__(img_name_list_path, voc12_root)
+
+        self.label_la_dir = label_la_dir
+        self.label_ha_dir = label_ha_dir
+        self.voc12_root = voc12_root
+
+        self.joint_transform_list = joint_transform_list
+        self.img_transform_list = img_transform_list
+        self.label_transform_list = label_transform_list
+
+        self.extract_aff_lab_func = ExtractAffinityLabelInRadius(cropsize=cropsize//8, radius=radius)
+
+    def __len__(self):
+        return len(self.img_name_list)
+
+    def __getitem__(self, idx):
+        name, img = super().__getitem__(idx)
+
+        label_la_path = os.path.join(self.label_la_dir, name + '.npy')
+
+        label_ha_path = os.path.join(self.label_ha_dir, name + '.npy')
+
+        label_la = np.load(label_la_path, allow_pickle=True).item()
+        label_ha = np.load(label_ha_path, allow_pickle=True).item()
+
+        label = np.array(list(label_la.values()) + list(label_ha.values()))
+        label = np.transpose(label, (1, 2, 0))
+
+        for joint_transform, img_transform, label_transform \
+                in zip(self.joint_transform_list, self.img_transform_list, self.label_transform_list):
+
+            if joint_transform:
+                img_label = np.concatenate((img, label), axis=-1)
+                img_label = joint_transform(img_label)
+                img = img_label[..., :3]
+                label = img_label[..., 3:]
+
+            if img_transform:
+                img = img_transform(img)
+            if label_transform:
+                label = label_transform(label)
+        #print(img.shape, label.shape)
+        no_score_region = np.max(label, -1) < 1e-5
+        label_la, label_ha = np.array_split(label, 2, axis=-1)
+        label_la = np.argmax(label_la, axis=-1).astype(np.uint8)
+        label_ha = np.argmax(label_ha, axis=-1).astype(np.uint8)
+        label = label_la.copy()
+        label[label_la == 0] = 255
+        label[label_ha == 0] = 0
+        label[no_score_region] = 255 # mostly outer of cropped region
+        label = self.extract_aff_lab_func(label)
+
+        return img, label
+
+
 def train_data_loader_for_classification(args):
     mean_vals = [0.485, 0.456, 0.406]
     std_vals = [0.229, 0.224, 0.225]
@@ -180,6 +293,7 @@ def train_data_loader_for_classification(args):
                                      transforms.RandomHorizontalFlip(),
                                      transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
                                      transforms.RandomCrop(crop_size),
+                                     transforms.RandomRotation(degrees=25,interpolation=transforms.InterpolationMode.BILINEAR),
                                      transforms.ToTensor(),
                                      transforms.Normalize(mean_vals, std_vals),
                                     ])
@@ -221,3 +335,4 @@ def data_loader_for_cam_inference(args):
     infer_loader = DataLoader(infer_dataset, shuffle=False, num_workers=args.num_workers, pin_memory=True)
     
     return infer_loader
+

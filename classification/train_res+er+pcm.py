@@ -14,15 +14,15 @@ from torch.utils.data import DataLoader
 import cv2
 import matplotlib
 import matplotlib.pyplot as plt
+import kornia as K
 
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
+sys.path.append(r"C:\Users\Admin\Desktop\2021\20211\DL\WSSS")
 from dataset import data
-from network.densenet import DenseNetUp
-import network
+from network.resnet import ResNet_ER_PCM
 from utils import evaluate_utils, general_utils,  train_utils
-from evaluate_utils import *
-from general_utils import *
-from train_utils import *
+from utils.evaluate_utils import *
+from utils.general_utils import *
+from utils.train_utils import *
 
 
 if __name__ == '__main__':
@@ -30,29 +30,29 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--num_workers', default=8, type=int)
-    parser.add_argument('--num_classes', default=20, type=int)
+    parser.add_argument('--num_classes', default=21, type=int)
     parser.add_argument('--voc12_root', default='/content/VOC2012_train_val/VOC2012_train_val', type=str)
-    parser.add_argument('--train_list', default='/content/drive/MyDrive/WSSS/Project/voc12/train_aug.txt', type=str)
+    parser.add_argument('--train_list', default='/content/drive/MyDrive/WSSS/Project/voc12/train1.txt', type=str)
     parser.add_argument('--val_list', default='/content/drive/MyDrive/WSSS/Project/voc12/train.txt', type=str)
-    parser.add_argument('--batch_size', default=16, type=int)
-    parser.add_argument('--max_epoch', default=3, type=int)
+    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--max_epoch', default=8, type=int)
     parser.add_argument('--lr', default=0.1, type=float)
     parser.add_argument('--wd', default=1e-4, type=float)
-    parser.add_argument('--input_size', default=512, type=int)
-    parser.add_argument('--crop_size', default=384, type=int)
+    parser.add_argument('--input_size', default=648, type=int)
+    parser.add_argument('--crop_size', default=512, type=int)
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='train_densenet121+up_input512', type=str)
+    parser.add_argument('--tag', default='test', type=str)
     args = parser.parse_args()
     
     # General settings
     log_dir = create_directory(f'./experiments/logs/')
     model_dir = create_directory('./experiments/models/')
-    data_dir = create_directory(f'./experiments/data/')
+    checkpoint_dir = create_directory('./experiments/checkpoints/')
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/')
     log_path = log_dir + f'{args.tag}.txt'
     model_path = model_dir + f'{args.tag}.pth'
-    data_path = data_dir + f'{args.tag}.json'
-    meta_dic = read_json('/content/drive/MyDrive/WSSS/Project/voc12/VOC_2012.json')
+    checkpoint_path = checkpoint_dir + f'{args.tag}.pth'
+    meta_dic = read_json('voc12/VOC_2012.json')
     class_names = np.asarray(meta_dic['class_names'])
     set_seed(args.seed)
 
@@ -63,9 +63,8 @@ if __name__ == '__main__':
     # Load train and val dataset
     train_loader = data.train_data_loader_for_classification(args)
     val_loader = data.val_data_loader_for_classification(args)
-    val_iteration = len(train_loader)
-    # log_iteration = int(val_iteration * args.print_ratio)
-    log_iteration = 100
+    val_iteration = 1#len(train_loader)
+    log_iteration = 1#400
     max_iteration = args.max_epoch * val_iteration
 
     log_func('[i] log_iteration : {:,}'.format(log_iteration))
@@ -73,11 +72,15 @@ if __name__ == '__main__':
     log_func('[i] max_iteration : {:,}'.format(max_iteration))
     
     # Network
-    load_model_fn = lambda: load_model(model, model_path)
+    load_checkpoint_fn = lambda: load_model(model, checkpoint_path)
+    save_checkpoint_fn = lambda: save_model(model, checkpoint_path)
     save_model_fn = lambda: save_model(model, model_path)
 
-    model = DenseNetUp(args.num_classes, pretrained=True)
+    model = ResNet_ER_PCM(args.num_classes, pretrained=True)
+    # load_checkpoint_fn()
     param_groups = model.get_parameter_groups(print_fn=None)
+    
+
     model = model.cuda()
     model.train()
 
@@ -88,7 +91,7 @@ if __name__ == '__main__':
     log_func('[i] gpu : {}'.format(str(torch.cuda.get_device_name(0))))
     
     # Loss, Optimizer
-    class_loss_fn = nn.MultiLabelSoftMarginLoss(reduction='none').cuda()
+    class_loss_fn = nn.MultiLabelSoftMarginLoss().cuda()
     log_func('[i] The number of pretrained weights : {}'.format(len(param_groups[0])))
     log_func('[i] The number of pretrained bias : {}'.format(len(param_groups[1])))
     log_func('[i] The number of scratched weights : {}'.format(len(param_groups[2])))
@@ -112,7 +115,8 @@ if __name__ == '__main__':
             for step, (images, labels, gt_masks) in enumerate(loader):
                 images = images.cuda()
 
-                _, cams = model(images)
+                cams = model.net_forward(images, mode='val')
+                cams = cams[:,1:,:,:]
 
                 for batch_index in range(images.size()[0]):
                     gt_mask = (get_numpy_from_tensor(gt_masks[batch_index].squeeze(0))*255).astype(np.uint8)
@@ -130,6 +134,13 @@ if __name__ == '__main__':
                         bg = np.ones_like(cam[:, :, 0]) * th
                         pred_mask = np.argmax(np.concatenate([bg[..., np.newaxis], cam], axis=-1), axis=-1).astype(np.uint8)
                         meter_dic[th].add(pred_mask, gt_mask)
+
+                        del bg, pred_mask
+                    
+                    del gt_mask, cam, cam_max, cam_min
+
+                del images, cams
+                if torch.cuda.is_available(): torch.cuda.empty_cache()
                    
                 sys.stdout.write('\r# Evaluation [{}/{}] = {:.2f}%'.format(step + 1, length, (step + 1) / length * 100))
                 sys.stdout.flush()
@@ -149,55 +160,93 @@ if __name__ == '__main__':
         return best_th, best_mIoU
 
     # Train
-    data_dic = {
-        'train' : [],
-        'validation' : []
-    }
-    train_meter = Average_Meter(['loss'])
+    train_meter = Average_Meter(['loss', 'loss_cls', 'loss_er', 'loss_ecr'])
     
     best_train_mIoU = -1
     thresholds = list(np.arange(0.10, 0.50, 0.05))
     
     writer = SummaryWriter(tensorboard_dir)
-    train_iterator = data.Iterator(train_loader)                                                          
+    train_iterator = data.Iterator(train_loader)   
+    scale_factor = 0.6
+    current_iteration = 0                                                       
 
-    for iteration in range(max_iteration):
+    for iteration in range(current_iteration, max_iteration):
         images, labels = train_iterator.get()
-        images, labels = images.cuda(), labels.cuda()
+        N,_,_,_ = images.size()
+        bg_score = torch.ones((N,1))
+        labels = torch.cat((bg_score, labels), dim=1)
+        images, labels = images.cuda(), labels.cuda().unsqueeze(2).unsqueeze(3)
 
-        score, _ = model(images)
-        loss = class_loss_fn(score, labels).mean()
+        (score, cam, cam_rv), (affine_score, affine_cam, affine_cam_rv) = model.net_forward(images, mode='train')
+        matrix = model.get_affine_matrix()
+        score = score.unsqueeze(2).unsqueeze(3)
+        affine_score = affine_score.unsqueeze(2).unsqueeze(3)
+        
+        loss_rvmin1 = train_utils.adaptive_min_pooling_loss((cam_rv*labels)[:,1:,:,:])
+        cam = F.interpolate(train_utils.max_norm(cam),scale_factor=scale_factor,mode='bilinear',align_corners=False)*labels
+        cam_rv1 = F.interpolate(train_utils.max_norm(cam_rv),scale_factor=scale_factor,mode='bilinear',align_corners=False)*labels
+
+        loss_rvmin2 = train_utils.adaptive_min_pooling_loss((affine_cam_rv*labels)[:,1:,:,:])
+        affine_cam = train_utils.max_norm(affine_cam)*labels
+        affine_cam_rv = train_utils.max_norm(affine_cam_rv)*labels
+        
+        loss_cls1 = class_loss_fn(score[:,1:,:,:], labels[:,1:,:,:])
+        loss_cls2 = class_loss_fn(affine_score[:,1:,:,:], labels[:,1:,:,:])
+        loss_cls = (loss_cls1 + loss_cls2)/2 + (loss_rvmin1+loss_rvmin2)/2
+        
+        ns,cs,hs,ws = affine_cam.size()
+        loss_er = torch.mean(torch.abs(K.geometry.transform.warp_perspective(cam[:,1:,:,:], matrix, (hs, ws), align_corners=False)*labels[:,1:,:,:] - affine_cam[:,1:,:,:]))
+        
+        cam[:,0,:,:] = 1-torch.max(cam[:,1:,:,:],dim=1)[0]
+        affine_cam[:,0,:,:] = 1-torch.max(affine_cam[:,1:,:,:],dim=1)[0]
+        tensor_ecr1 = torch.abs(train_utils.max_onehot(affine_cam.detach()) - K.geometry.transform.warp_perspective(cam_rv, matrix, (hs, ws), align_corners=False)*labels)
+        tensor_ecr2 = torch.abs(train_utils.max_onehot(K.geometry.transform.warp_perspective(cam, matrix, (hs, ws), align_corners=False).detach())*labels - affine_cam_rv)
+        loss_ecr1 = torch.mean(torch.topk(tensor_ecr1.view(ns,-1), k=(int)(21*hs*ws*0.3), dim=-1)[0])
+        loss_ecr2 = torch.mean(torch.topk(tensor_ecr2.view(ns,-1), k=(int)(21*hs*ws*0.3), dim=-1)[0])
+        loss_ecr = loss_ecr1 + loss_ecr2
+        
+        loss = loss_cls + loss_er + loss_ecr
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         train_meter.add({
-            'loss' : loss.item()
+            'loss': loss.item(), 'loss_cls': loss_cls.item(), 'loss_er': loss_er.item(), 'loss_ecr': loss_ecr.item()
         })
+
+        del images, labels, score, cam, cam_rv, affine_score, affine_cam, affine_cam_rv, loss_cls1, loss_cls2, loss_cls
+        del matrix, loss_er, tensor_ecr1, tensor_ecr2, loss_ecr1, loss_ecr2, loss_ecr, loss
+        del loss_rvmin1, loss_rvmin2
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
         
         # For Log
         if (iteration + 1) % log_iteration == 0:
-            loss = train_meter.get(clear=True)
+            loss, loss_cls, loss_er, loss_ecr = train_meter.get(clear=True)
             learning_rate = float(get_learning_rate_from_optimizer(optimizer))
             
             data = {
                 'iteration' : iteration + 1,
                 'learning_rate' : learning_rate,
-                'loss' : loss
-
+                'loss' : loss,
+                'loss_cls' : loss_cls,
+                'loss_er' : loss_er, 
+                'loss_ecr' : loss_ecr
             }
-            data_dic['train'].append(data)
-            write_json(data_path, data_dic)
 
-            log_func('[i] iteration={iteration:,}, learning_rate={learning_rate:.4f}, loss={loss:.4f}'.format(**data)
+            log_func('[i] iteration={iteration:,}, learning_rate={learning_rate:.4f}, loss={loss:.4f}, loss_cls={loss_cls:.4f}, loss_er={loss_er:.4f}, loss_ecr={loss_ecr:.4f}'.format(**data)
             )
 
             writer.add_scalar('Train/loss', loss, iteration)
+            writer.add_scalar('Train/loss_cls', loss_cls, iteration)
+            writer.add_scalar('Train/loss_er', loss_er, iteration)
+            writer.add_scalar('Train/loss_ecr', loss_ecr, iteration)
             writer.add_scalar('Train/learning_rate', learning_rate, iteration)
         
         # For evaluation
-        if (iteration + 1) % val_iteration == 0: 
+        if (iteration + 1) % val_iteration == 0:
+            save_checkpoint_fn()
+
             threshold, mIoU = evaluate(val_loader)
             
             if best_train_mIoU == -1 or best_train_mIoU < mIoU:
@@ -212,8 +261,6 @@ if __name__ == '__main__':
                 'train_mIoU' : mIoU,
                 'best_train_mIoU' : best_train_mIoU
             }
-            data_dic['validation'].append(data)
-            write_json(data_path, data_dic)
             
             log_func('[i] iteration={iteration:,}, threshold={threshold:.2f}, train_mIoU={train_mIoU:.2f}%, best_train_mIoU={best_train_mIoU:.2f}%'.format(**data))
             
@@ -221,7 +268,6 @@ if __name__ == '__main__':
             writer.add_scalar('Evaluation/train_mIoU', mIoU, iteration)
             writer.add_scalar('Evaluation/best_train_mIoU', best_train_mIoU, iteration)
       
-    write_json(data_path, data_dic)
     writer.close()
 
     print("Training done")

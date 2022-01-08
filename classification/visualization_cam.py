@@ -3,6 +3,7 @@ import numpy as np
 import os
 from PIL import Image
 
+
 def relu(x):
   return x * (x > 0)
 
@@ -40,6 +41,21 @@ def visualization(image_folder, predict_folder, name):
 
   image_file = os.path.join(image_folder,name+'.jpg')
   image = np.array(Image.open(image_file).convert('RGB'))
+  h, w, c = image.shape
+  
+  cam = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LINEAR)
+  cam = colormap(cam)
+  
+  image = cv2.addWeighted(image, 0.5, cam, 0.5, 0)[..., ::-1]
+  image = image.astype(np.float32) / 255.
+  
+  return image
+
+def visualize(image, cam):
+  cam = norm_cam(cam)
+  cam = cam.max(axis=0)
+  cam = (cam * 255).astype(np.uint8)
+
   h, w, c = image.shape
   
   cam = cv2.resize(cam, (w, h), interpolation=cv2.INTER_LINEAR)

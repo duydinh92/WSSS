@@ -2,6 +2,7 @@ import os
 import torch
 import random
 import numpy as np
+import torch.nn.functional as F
 
 
 def set_seed(seed):
@@ -26,6 +27,35 @@ def get_learning_rate_from_optimizer(optimizer):
 
 def get_numpy_from_tensor(tensor):
     return tensor.cpu().detach().numpy()
+
+
+def max_norm(p, e=1e-5):
+    N, C, H, W = p.size()
+    p = F.relu(p)
+    max_v = torch.max(p.view(N,C,-1),dim=-1)[0].view(N,C,1,1)
+    min_v = torch.min(p.view(N,C,-1),dim=-1)[0].view(N,C,1,1)
+    p = F.relu(p-min_v-e)/(max_v-min_v+e)
+
+    return p
+
+
+def adaptive_min_pooling_loss(x):
+    n,c,h,w = x.size()
+    k = int(0.2*h*w)
+    x = torch.max(x, dim=1)[0]
+    y = torch.topk(x.view(n,-1), k=k, dim=-1, largest=False)[0]
+    y = F.relu(y, inplace=False)
+    loss = torch.sum(y)/(k*n)
+    
+    return loss
+
+
+def max_onehot(x):
+    n,c,h,w = x.size()
+    x_max = torch.max(x[:,:,:,:], dim=1, keepdim=True)[0]
+    x[:,:,:,:][x[:,:,:,:] != x_max] = 0
+    
+    return x
 
 
 class PolyOptimizer(torch.optim.SGD):
