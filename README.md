@@ -19,3 +19,8 @@ pip install -r requirements.txt
 ```bash
 python classification/train_res+er+pcm.py --voc12_root data_dir --train_list voc12/train_aug.txt --val_list voc12/train.txt
 ```
+## Use trained ResNet to infer CAMs and CAMs processed with dCRFs to have high confidence object score and high confidence background score
+```bash
+!python classification/infer_cam.py --voc12_root data_dir --infer_list voc12/train_aug.txt --weights trained_resnet_dir
+```
+## 
