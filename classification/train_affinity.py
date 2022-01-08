@@ -39,8 +39,8 @@ if __name__ == '__main__':
     parser.add_argument("--crop_size", default=448, type=int)
     parser.add_argument("--ho_crf_dir", default="/content/drive/MyDrive/WSSS/Project/crf_4.0", type=str)
     parser.add_argument("--hb_crf_dir", default="/content/drive/MyDrive/WSSS/Project/crf_24.0", type=str)
-    parser.add_argument("--weights", default="/content/drive/MyDrive/WSSS/Project/ilsvrc-cls_rna-a1_cls1000_ep-0001.params", type=str)
-    parser.add_argument('--tag', default='train_affinity_net', type=str)
+    parser.add_argument("--weights", default=None, type=str)
+    parser.add_argument('--tag', default='train_affinity', type=str)
     args = parser.parse_args()
 
     # General settings
@@ -105,15 +105,16 @@ if __name__ == '__main__':
         {'params': param_groups[2], 'lr': 10*args.lr, 'weight_decay': args.wt_dec},
         {'params': param_groups[3], 'lr': 20*args.lr, 'weight_decay': 0},
     ], lr=args.lr, momentum=0.9, weight_decay=args.wt_dec, max_step=max_step, nesterov=True)
-
-    if args.weights[-7:] == '.params':
-        import network.resnet38d
-        assert args.network == "network.resnet38_aff"
-        weights_dict = network.resnet38d.convert_mxnet_to_torch(args.weights)
-    else:
-        weights_dict = torch.load(args.weights)
-
-    model.load_state_dict(weights_dict, strict=False)
+    
+    if args.weights is not None:
+        if args.weights[-7:] == '.params':
+            import network.resnet38d
+            assert args.network == "network.resnet38_aff"
+            weights_dict = network.resnet38d.convert_mxnet_to_torch(args.weights)
+        else:
+            weights_dict = torch.load(args.weights)
+        model.load_state_dict(weights_dict, strict=False)
+    
     model = model.cuda()
     model.train()
 
