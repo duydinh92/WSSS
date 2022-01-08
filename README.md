@@ -1,1 +1,2 @@
 # WSSS
+This is the implementation of our deep learning project for weakly supervised semantic segmentation topic. Our work consists of two parts, first is generating class activation maps of images in the training dataset to make pseudo label for training segmentation, and then using these pseudo labels to train a segmentation model. We use code from https://github.com/VainF/DeepLabV3Plus-Pytorch to conduct the second phase of our work.
