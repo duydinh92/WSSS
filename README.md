@@ -15,3 +15,7 @@ Our code is built in Colab with GPU session and make training and inference with
 pip install -r requirements.txt
 ```
 
+## Train ResNet with classification task to generate CAMs
+```bash
+python classification/train_res+er+pcm.py --voc12_root data_dir --train_list voc12/train_aug.txt --val_list voc12/train.txt
+```
