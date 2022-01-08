@@ -11,7 +11,7 @@ from PIL import Image
 import cv2
 
 import sys
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
+sys.path.append(r"/content/drive/MyDrive/WSSS")
 import dataset
 from dataset import data
 import network
@@ -28,12 +28,16 @@ if __name__ == '__main__':
     parser.add_argument("--cam_dir", default="/content/drive/MyDrive/WSSS/Project/cam", type=str)
     parser.add_argument("--voc12_root", default='/content/VOC2012_train_val/VOC2012_train_val', type=str)
     parser.add_argument("--alpha", default=6, type=float) 
-    parser.add_argument("--out_rw", default='/content/drive/MyDrive/WSSS/Project/pseudo_label', type=str)
+    parser.add_argument("--out_label", default='/content/drive/MyDrive/WSSS/Project/pseudo_label', type=str)
     parser.add_argument("--beta", default=8, type=int) 
     parser.add_argument("--logt", default=6, type=int)  
     parser.add_argument("--crf", default=0, type=int) 
 
     args = parser.parse_args()
+
+    if not os.path.exists(args.out_label):
+        os.makedirs(args.out_label)
+
     model = getattr(importlib.import_module(args.network), 'Net')()
     model.load_state_dict(torch.load(args.weights), strict=False)
 
@@ -136,4 +140,4 @@ if __name__ == '__main__':
             res = np.uint8(cam_rw_pred.cpu().data[0])[:orig_shape[2], :orig_shape[3]]
             pred_map = Image.fromarray(res)
             pred_map.putpalette(palette)
-            pred_map.save(os.path.join(args.out_rw, "%s.png" % name))
+            pred_map.save(os.path.join(args.out_label, "%s.png" % name))

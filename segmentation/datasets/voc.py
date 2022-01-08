@@ -8,6 +8,7 @@ import numpy as np
 
 from PIL import Image
 from torchvision.datasets.utils import download_url, check_integrity
+sys.path.append(r"/content/drive/MyDrive/WSSS")
 
 DATASET_YEAR_DICT = {
     '2012': {
@@ -103,7 +104,7 @@ class VOCSegmentation(data.Dataset):
         
         self.image_set = image_set
         base_dir = DATASET_YEAR_DICT[year]['base_dir']
-        voc_root = os.path.join(self.root, base_dir)
+        voc_root = root
         image_dir = os.path.join(voc_root, 'JPEGImages')
 
         if download:
@@ -114,12 +115,12 @@ class VOCSegmentation(data.Dataset):
                                ' You can use download=True to download it')
         
         if is_aug and image_set=='train':
-            mask_dir = '/content/drive/MyDrive/WSSS/Project/pseudo_label'            
+            mask_dir = 'pseudo_label'            
             assert os.path.exists(mask_dir), "SegmentationClassAug not found, please refer to README.md and prepare it manually"
-            split_f = os.path.join( self.root, 'train_aug.txt')#'./datasets/data/train_aug.txt'
+            split_f = 'segmentation/datasets/data/train_aug.txt'
         elif is_aug == False and image_set == 'train':
-            mask_dir = '/content/drive/MyDrive/WSSS/Project/pseudo_label'
-            split_f = '/content/drive/MyDrive/WSSS/Project/DeepLabV3Plus-Pytorch/datasets/data/VOCdevkit/VOC2012/ImageSets/Segmentation/train.txt'
+            mask_dir = 'pseudo_label'
+            split_f = 'voc12/train.txt'
         else:
             mask_dir = os.path.join(voc_root, 'SegmentationClass')
             splits_dir = os.path.join(voc_root, 'ImageSets/Segmentation')

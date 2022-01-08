@@ -16,7 +16,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import kornia as K
 
-sys.path.append(r"C:\Users\Admin\Desktop\2021\20211\DL\WSSS")
+sys.path.append(r"/content/drive/MyDrive/WSSS")
 from dataset import data
 from network.resnet import ResNet_ER_PCM
 from utils import evaluate_utils, general_utils,  train_utils
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_size', default=648, type=int)
     parser.add_argument('--crop_size', default=512, type=int)
     parser.add_argument('--print_ratio', default=0.1, type=float)
-    parser.add_argument('--tag', default='test', type=str)
+    parser.add_argument('--tag', default='train_res+er+pcm', type=str)
     args = parser.parse_args()
     
     # General settings
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     # Define evaluation function
     def evaluate(loader):
         model.eval()
-        meter_dic = {th : Calculator_For_mIoU('/content/drive/MyDrive/WSSS/Project/voc12/VOC_2012.json') for th in thresholds}
+        meter_dic = {th : Calculator_For_mIoU('voc12/VOC_2012.json') for th in thresholds}
 
         with torch.no_grad():
             length = len(loader)

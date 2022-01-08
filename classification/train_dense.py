@@ -15,7 +15,7 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
+sys.path.append(r"/content/drive/MyDrive/WSSS")
 from dataset import data
 from network.densenet import DenseNet
 import network
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/')
     log_path = log_dir + f'{args.tag}.txt'
     model_path = model_dir + f'{args.tag}.pth'
-    meta_dic = read_json('/content/drive/MyDrive/WSSS/Project/voc12/VOC_2012.json')
+    meta_dic = read_json('voc12/VOC_2012.json')
     class_names = np.asarray(meta_dic['class_names'])
     set_seed(args.seed)
 

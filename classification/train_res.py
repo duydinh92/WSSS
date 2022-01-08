@@ -15,7 +15,7 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
+sys.path.append(r"/content/drive/MyDrive/WSSS")
 from dataset import data
 from network.resnet import ResNet
 import network

@@ -16,7 +16,7 @@ from PIL import Image
 
 import sys
 
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
+sys.path.append(r"/content/drive/MyDrive/WSSS/classification")
 import dataset
 from dataset import data
 import network
@@ -26,7 +26,6 @@ from utils import imutils
 
 
 def predict(image):
-    # image = Image.open("/content/drive/MyDrive/WSSS/Project/test/orig/2007_000032.jpg").convert("RGB")
     mean_vals = [0.485, 0.456, 0.406]
     std_vals = [0.229, 0.224, 0.225]
     tsfm_infer = transforms.Compose([transforms.ToTensor(),
@@ -38,7 +37,7 @@ def predict(image):
     # Infer CAM
     model = ResNet_ER_PCM(21, pretrained=False)
     model.load_state_dict(torch.load(
-        "/content/drive/MyDrive/WSSS/Project/experiments/models/train_res152+er+pcm_crop512_lr0.01_epoch8.pth"))
+        "experiments/models/train_res152+er+pcm_crop512_lr0.01_epoch8.pth"))
     model.cuda()
     model.eval()
 
@@ -67,7 +66,7 @@ def predict(image):
 
     # Infer Affinity CAM
     model = getattr(importlib.import_module("network.resnet38_aff"), 'Net')()
-    model.load_state_dict(torch.load("/content/drive/MyDrive/WSSS/Project/experiments/models/train_affinity_net8.pth"),
+    model.load_state_dict(torch.load("experiments/models/train_affinity_net8.pth"),
                           strict=False)
     model.cuda()
     model.eval()

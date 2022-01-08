@@ -75,7 +75,7 @@ def get_argparser():
     parser.add_argument("--step_size", type=int, default=10000)
     parser.add_argument("--crop_val", action='store_true', default=False,
                         help='crop validation (default: False)')
-    parser.add_argument("--batch_size", type=int, default=16,
+    parser.add_argument("--batch_size", type=int, default=8,
                         help='batch size (default: 16)')
     parser.add_argument("--val_batch_size", type=int, default=4,
                         help='batch size for validation (default: 4)')
@@ -303,7 +303,7 @@ def main():
         }, path)
         print("Model saved as %s" % path)
 
-    utils.mkdir('checkpoints')
+    #utils.mkdir('checkpoints')
     # Restore
     best_score = 0.0
     cur_itrs = 0
@@ -369,7 +369,7 @@ def main():
                 interval_loss = 0.0
 
             if (cur_itrs) % opts.val_interval == 0:
-                save_ckpt('checkpoints/latest_%s_%s_os%d.pth' %
+                save_ckpt('experiments/checkpoints/latest_%s_%s_os%d.pth' %
                           (opts.model, opts.dataset, opts.output_stride))
                 print("validation...")
                 model.eval()
@@ -379,7 +379,7 @@ def main():
                 print(metrics.to_str(val_score))
                 if val_score['Mean IoU'] > best_score:  # save best model
                     best_score = val_score['Mean IoU']
-                    save_ckpt('checkpoints/best_%s_%s_os%d.pth' %
+                    save_ckpt('experiments/models/best_%s_%s_os%d.pth' %
                               (opts.model, opts.dataset, opts.output_stride))
 
                 if vis is not None:  # visualize validation score and samples

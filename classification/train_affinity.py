@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import importlib
 
 import sys
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
+sys.path.append(r"/content/drive/MyDrive/WSSS")
 from dataset import data
 import network
 from utils import evaluate_utils, general_utils,  train_utils, imutils
@@ -37,10 +37,10 @@ if __name__ == '__main__':
     parser.add_argument('--lr', default=0.01, type=float)
     parser.add_argument('--wt_dec', default=1e-4, type=float)
     parser.add_argument("--crop_size", default=448, type=int)
-    parser.add_argument("--la_crf_dir", default="/content/drive/MyDrive/WSSS/Project/crf_4.0", type=str)
-    parser.add_argument("--ha_crf_dir", default="/content/drive/MyDrive/WSSS/Project/crf_24.0", type=str)
+    parser.add_argument("--ho_crf_dir", default="/content/drive/MyDrive/WSSS/Project/crf_4.0", type=str)
+    parser.add_argument("--hb_crf_dir", default="/content/drive/MyDrive/WSSS/Project/crf_24.0", type=str)
     parser.add_argument("--weights", default="/content/drive/MyDrive/WSSS/Project/ilsvrc-cls_rna-a1_cls1000_ep-0001.params", type=str)
-    parser.add_argument('--tag', default='test', type=str)
+    parser.add_argument('--tag', default='train_affinity_net', type=str)
     args = parser.parse_args()
 
     # General settings
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     model_path = model_dir + f'{args.tag}.pth'
     checkpoint_path = checkpoint_dir + f'{args.tag}.pth'
     log_path = log_dir + f'{args.tag}.txt'
-    meta_dic = read_json('/content/drive/MyDrive/WSSS/Project/voc12/VOC_2012.json')
+    meta_dic = read_json('voc12/VOC_2012.json')
     class_names = np.asarray(meta_dic['class_names'])
     tensorboard_dir = create_directory(f'./experiments/tensorboards/{args.tag}/')
     set_seed(args.seed)
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     param_groups = model.get_parameter_groups()
 
     # Load train dataset
-    train_dataset = data.VOC_Dataset_For_Aff(args.train_list, label_la_dir=args.la_crf_dir, label_ha_dir=args.ha_crf_dir,
+    train_dataset = data.VOC_Dataset_For_Aff(args.train_list, label_la_dir=args.ho_crf_dir, label_ha_dir=args.hb_crf_dir,
                                                voc12_root=args.voc12_root, cropsize=args.crop_size, radius=5,
                     joint_transform_list=[
                         None,

@@ -7,7 +7,7 @@ import argparse
 import cv2
 
 import sys  
-sys.path.append(r"/content/drive/MyDrive/WSSS/Project")
+sys.path.append(r"/content/drive/MyDrive/WSSS")
 import dataset
 from dataset import data
 
@@ -128,9 +128,9 @@ def writelog(filepath, metric):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--list", default='voc12/train.txt', type=str)
-    parser.add_argument("--predict_dir", default='test_rw', type=str)
+    parser.add_argument("--predict_dir", default='pseudo_label', type=str)
     parser.add_argument("--voc12_root", default='/content/VOC2012_train_val/VOC2012_train_val', type=str)
-    parser.add_argument('--logfile', default='experiments/evaluation/test.txt',type=str)
+    parser.add_argument('--logfile', default='experiments/evaluation/eval.txt',type=str)
     parser.add_argument('--t', default=0.2, type=float)
     parser.add_argument('--png', default=True, type=bool)
     parser.add_argument('--curve', default=True, type=bool)
@@ -139,12 +139,15 @@ if __name__ == '__main__':
     name_list = data.load_img_name_list(args.list)
     gt_dir = os.path.join(args.voc12_root,'SegmentationClass')
 
+    if not os.path.exists("experiments/evaluation"):
+        os.makedirs("experiments/evaluation")
+
     if not args.curve:
         loglist = do_python_eval(args.predict_dir, gt_dir, name_list, 21, args.t, png=args.png)
         writelog(args.logfile, loglist)
     else:
         l = []
-        for i in range(0,5,5):
+        for i in range(0,55,5):
             t = i/100.0
             loglist = do_python_eval(args.predict_dir, gt_dir, name_list, 21, t, png=args.png)
             l.append(loglist['mIoU'])
